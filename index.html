@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>平安京エイリアン</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #000;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+        }
+        h1 {
+            margin: 10px 0;
+            color: #0f0;
+        }
+        #gameCanvas {
+            border: 2px solid #0f0;
+            background-color: #000;
+            image-rendering: pixelated;
+        }
+        #info {
+            margin-top: 20px;
+            display: flex;
+            gap: 40px;
+            font-size: 18px;
+        }
+        #controls {
+            margin-top: 20px;
+            text-align: center;
+            color: #888;
+        }
+        .game-over {
+            color: #f00;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .victory {
+            color: #ff0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>平安京エイリアン</h1>
+    <canvas id="gameCanvas" width="640" height="640"></canvas>
+    <div id="info">
+        <div>スコア: <span id="score">0</span></div>
+        <div>レベル: <span id="level">1</span></div>
+        <div>ライフ: <span id="lives">3</span></div>
+    </div>
+    <div id="controls">
+        <p>矢印キー: 移動 | スペース: 穴を掘る/埋める | R: リスタート</p>
+    </div>
+    <div id="message"></div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const GRID_SIZE = 16;
+        const CELL_SIZE = canvas.width / GRID_SIZE;
+
+        // Game state
+        let gameState = {
+            player: { x: 7, y: 7 },
+            aliens: [],
+            holes: [],
+            score: 0,
+            level: 1,
+            lives: 3,
+            gameOver: false,
+            victory: false,
+            alienSpeed: 10
+        };
+
+        // Input handling
+        const keys = {};
+        let lastMoveTime = 0;
+        let lastActionTime = 0;
+        const MOVE_DELAY = 100;
+        const ACTION_DELAY = 150;
+
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (e.key === 'r' || e.key === 'R') {
+                if (gameState.gameOver || gameState.victory) {
+                    initGame();
+                }
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // Initialize game
+        function initGame() {
+            gameState = {
+                player: { x: 7, y: 7 },
+                aliens: [],
+                holes: [],
+                score: gameState.gameOver ? 0 : gameState.score,
+                level: gameState.gameOver ? 1 : gameState.level,
+                lives: gameState.gameOver ? 3 : gameState.lives,
+                gameOver: false,
+                victory: false,
+                alienSpeed: 10 - Math.min(gameState.level - 1, 5)
+            };
+
+            spawnAliens();
+            updateDisplay();
+        }
+
+        function spawnAliens() {
+            const alienCount = 3 + gameState.level;
+            gameState.aliens = [];
+
+            for (let i = 0; i < alienCount; i++) {
+                let x, y;
+                do {
+                    x = Math.floor(Math.random() * GRID_SIZE);
+                    y = Math.floor(Math.random() * GRID_SIZE);
+                } while (Math.abs(x - gameState.player.x) < 3 && Math.abs(y - gameState.player.y) < 3);
+
+                gameState.aliens.push({ x, y, moveCounter: 0 });
+            }
+        }
+
+        function isValidPosition(x, y) {
+            return x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE;
+        }
+
+        function getHoleAt(x, y) {
+            return gameState.holes.find(h => h.x === x && h.y === y);
+        }
+
+        function getAlienAt(x, y) {
+            return gameState.aliens.find(a => a.x === x && a.y === y);
+        }
+
+        function handleInput(currentTime) {
+            if (gameState.gameOver || gameState.victory) return;
+
+            // Movement
+            if (currentTime - lastMoveTime > MOVE_DELAY) {
+                let newX = gameState.player.x;
+                let newY = gameState.player.y;
+
+                if (keys['ArrowUp']) newY--;
+                if (keys['ArrowDown']) newY++;
+                if (keys['ArrowLeft']) newX--;
+                if (keys['ArrowRight']) newX++;
+
+                if (isValidPosition(newX, newY) && (newX !== gameState.player.x || newY !== gameState.player.y)) {
+                    const hole = getHoleAt(newX, newY);
+                    if (!hole || hole.filled) {
+                        gameState.player.x = newX;
+                        gameState.player.y = newY;
+                        lastMoveTime = currentTime;
+
+                        // Check collision with alien
+                        const alien = getAlienAt(newX, newY);
+                        if (alien) {
+                            playerHit();
+                        }
+                    }
+                }
+            }
+
+            // Dig/Fill hole
+            if (keys[' '] && currentTime - lastActionTime > ACTION_DELAY) {
+                const x = gameState.player.x;
+                const y = gameState.player.y;
+                const existingHole = getHoleAt(x, y);
+
+                if (existingHole) {
+                    if (!existingHole.filled && existingHole.hasAlien) {
+                        // Fill hole with alien - destroy alien
+                        gameState.holes = gameState.holes.filter(h => !(h.x === x && h.y === y));
+                        gameState.aliens = gameState.aliens.filter(a => !(a.x === x && a.y === y));
+                        gameState.score += 100 * gameState.level;
+                        updateDisplay();
+
+                        // Check victory
+                        if (gameState.aliens.length === 0) {
+                            levelComplete();
+                        }
+                    }
+                } else {
+                    // Dig new hole
+                    gameState.holes.push({ x, y, filled: false, hasAlien: false });
+                }
+
+                lastActionTime = currentTime;
+            }
+        }
+
+        function updateAliens() {
+            for (let alien of gameState.aliens) {
+                alien.moveCounter++;
+
+                if (alien.moveCounter >= gameState.alienSpeed) {
+                    alien.moveCounter = 0;
+
+                    // Simple AI: move toward player
+                    const dx = gameState.player.x - alien.x;
+                    const dy = gameState.player.y - alien.y;
+
+                    let newX = alien.x;
+                    let newY = alien.y;
+
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        newX += dx > 0 ? 1 : -1;
+                    } else if (dy !== 0) {
+                        newY += dy > 0 ? 1 : -1;
+                    } else if (dx !== 0) {
+                        newX += dx > 0 ? 1 : -1;
+                    }
+
+                    if (isValidPosition(newX, newY)) {
+                        const hole = getHoleAt(newX, newY);
+
+                        if (hole && !hole.filled && !hole.hasAlien) {
+                            // Alien falls into hole
+                            alien.x = newX;
+                            alien.y = newY;
+                            hole.hasAlien = true;
+                        } else if (!hole || hole.filled) {
+                            // Normal movement
+                            alien.x = newX;
+                            alien.y = newY;
+
+                            // Check collision with player
+                            if (alien.x === gameState.player.x && alien.y === gameState.player.y) {
+                                playerHit();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function playerHit() {
+            gameState.lives--;
+            updateDisplay();
+
+            if (gameState.lives <= 0) {
+                gameState.gameOver = true;
+                document.getElementById('message').innerHTML = '<p class="game-over">ゲームオーバー! Rキーでリスタート</p>';
+            } else {
+                // Reset player position
+                gameState.player.x = 7;
+                gameState.player.y = 7;
+            }
+        }
+
+        function levelComplete() {
+            gameState.victory = true;
+            gameState.level++;
+            gameState.score += 500;
+            document.getElementById('message').innerHTML = '<p class="victory">レベルクリア! Rキーで次のレベルへ</p>';
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid
+            ctx.strokeStyle = '#111';
+            for (let i = 0; i <= GRID_SIZE; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * CELL_SIZE, 0);
+                ctx.lineTo(i * CELL_SIZE, canvas.height);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(0, i * CELL_SIZE);
+                ctx.lineTo(canvas.width, i * CELL_SIZE);
+                ctx.stroke();
+            }
+
+            // Draw holes
+            for (let hole of gameState.holes) {
+                ctx.fillStyle = hole.hasAlien ? '#880' : '#444';
+                ctx.fillRect(
+                    hole.x * CELL_SIZE + 4,
+                    hole.y * CELL_SIZE + 4,
+                    CELL_SIZE - 8,
+                    CELL_SIZE - 8
+                );
+            }
+
+            // Draw aliens
+            for (let alien of gameState.aliens) {
+                ctx.fillStyle = '#0f0';
+                ctx.beginPath();
+                ctx.arc(
+                    alien.x * CELL_SIZE + CELL_SIZE / 2,
+                    alien.y * CELL_SIZE + CELL_SIZE / 2,
+                    CELL_SIZE / 3,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+                // Draw eyes
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(
+                    alien.x * CELL_SIZE + CELL_SIZE / 2 - 5,
+                    alien.y * CELL_SIZE + CELL_SIZE / 2 - 5,
+                    3,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(
+                    alien.x * CELL_SIZE + CELL_SIZE / 2 + 5,
+                    alien.y * CELL_SIZE + CELL_SIZE / 2 - 5,
+                    3,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+            }
+
+            // Draw player
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(
+                gameState.player.x * CELL_SIZE + 8,
+                gameState.player.y * CELL_SIZE + 8,
+                CELL_SIZE - 16,
+                CELL_SIZE - 16
+            );
+            ctx.fillStyle = '#f00';
+            ctx.fillRect(
+                gameState.player.x * CELL_SIZE + 12,
+                gameState.player.y * CELL_SIZE + 12,
+                CELL_SIZE - 24,
+                CELL_SIZE - 24
+            );
+        }
+
+        function updateDisplay() {
+            document.getElementById('score').textContent = gameState.score;
+            document.getElementById('level').textContent = gameState.level;
+            document.getElementById('lives').textContent = gameState.lives;
+        }
+
+        function gameLoop(currentTime) {
+            handleInput(currentTime);
+
+            if (!gameState.gameOver && !gameState.victory) {
+                updateAliens();
+            }
+
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start game
+        initGame();
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
