@@ -114,6 +114,7 @@
             };
 
             spawnAliens();
+            document.getElementById('message').textContent = '';
             updateDisplay();
         }
 
@@ -203,6 +204,8 @@
 
         function updateAliens() {
             for (let alien of gameState.aliens) {
+                if (alien.trapped) continue;
+
                 alien.moveCounter++;
 
                 if (alien.moveCounter >= gameState.alienSpeed) {
@@ -231,6 +234,7 @@
                             alien.x = newX;
                             alien.y = newY;
                             hole.hasAlien = true;
+                            alien.trapped = true;
                         } else if (!hole || hole.filled) {
                             // Normal movement
                             alien.x = newX;
