@@ -1,0 +1,22 @@
+{
+  "name": "katarikake-ai-demo",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "語りかけパーソナルAI デモ（Phase 2 デモ開発: 固定シナリオ版 / AI組み込み版）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.134.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.3.4",
+    "vite": "5.4.11",
+    "vite-plugin-singlefile": "2.0.3"
+  }
+}
